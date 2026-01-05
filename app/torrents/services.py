@@ -1,4 +1,5 @@
 from . import models, utils
+from.utils import redischeck
 from app.core.database import redis_client, MediaInfoSummaryContext
 from typing import List
 
@@ -21,22 +22,19 @@ def get_children_of_key(key: str):
             break
     return keys
 
+
+@redischeck(redis_client)
 def get_unique_ids_from_torrent_hash(thash: str):
-    
-    if not redis_client:
-        raise ConnectionError("Database connection is not available.")
-        
     thash_key = get_torrent_hash_key(thash)
     thash_keys = get_children_of_key(thash_key)
     return redis_client.mget(thash_keys)
 
+@redischeck(redis_client)
 def get_media_from_uniqueid(unique_id: int):
     """
     Fetches a single media by uniqueid.
-    """
-    if not redis_client:
-        raise ConnectionError("Database connection is not available.")
-        
+    """   
+
     unique_id_key = get_unique_key(unique_id)
     media_info = redis_client.get(unique_id_key)
     
@@ -44,13 +42,12 @@ def get_media_from_uniqueid(unique_id: int):
         return MediaInfoSummaryContext.ParseFromString(media_info)
     return None
 
+@redischeck(redis_client)
 def get_medias_from_uniqueids(unique_ids: List[int]):
     """
     Fetches multiple medias by uniqueids.
     """
-    if not redis_client:
-        raise ConnectionError("Database connection is not available.")
-    
+
     unique_id_keys = [get_unique_key(unique_id) for unique_id in unique_ids]
 
     media_infos = redis_client.mget(unique_id_keys)
@@ -59,47 +56,43 @@ def get_medias_from_uniqueids(unique_ids: List[int]):
         return {unique_id:MediaInfoSummaryContext.ParseFromString(media_info) for media_info,unique_id in zip(media_infos,unique_ids)}
     return None
 
+@redischeck(redis_client)
 def get_media_from_imdb(imdb: str):
     """
     Fetches all media by imdb.
     """
-    if not redis_client:
-        raise ConnectionError("Database connection is not available.")
-        
+
     imdb_key = get_imdb_key(imdb)
     unique_id_key = redis_client.get(imdb_key)
     
     return get_media_from_uniqueid(unique_id_key)
 
+@redischeck(redis_client)
 def get_media_from_torrent_hash(thash: str, index: int):
     """
     Fetches a single media by torrent hash and index.
-    """
-    if not redis_client:
-        raise ConnectionError("Database connection is not available.")
-        
+    """ 
+
     thash_key = get_torrent_hash_key(thash, index)
     unique_id = redis_client.get(thash_key)
     
     return get_media_from_uniqueid(unique_id)
 
+@redischeck(redis_client)
 def get_medias_from_torrent_hash(thash: str):
     """
     Fetches an entire torrent of media by torrent hash.
     """
-    if not redis_client:
-        raise ConnectionError("Database connection is not available.")
 
     unique_ids = get_unique_ids_from_torrent_hash(thash)
 
     return get_medias_from_uniqueids(unique_ids)
 
+@redischeck(redis_client)
 def create_media_summary(json_media: models.MediaInfoSummary):
     """
     Creates a new media summary in the Redis database.
     """
-    if not redis_client:
-        raise ConnectionError("Database connection is not available.")
 
     summary_proto = utils.parse_json_to_proto(json_media) # Need to fix all this
 
@@ -132,12 +125,11 @@ def remove_medias(unique_id_keys: List[str], thash_keys: List[str], imdb_keys: L
         pipe.srem(imdb_key, unique_id_key[10:0]) # Could optimize this whole thing to just do different srems for each imdb. But i can do that latter
     pipe.execute()
 
+@redischeck(redis_client)
 def remove_media_from_uniqueid(unique_id: int):
     """
     Removes a media summary from the Redis database by uniqueid.
     """
-    if not redis_client:
-        raise ConnectionError("Database connection is not available.")
     
     MediaSummary = get_media_from_uniqueid(unique_id)
 
@@ -148,12 +140,11 @@ def remove_media_from_uniqueid(unique_id: int):
 
     remove_media(unique_id_key, thash_key, imdb_key)
 
+@redischeck(redis_client)
 def remove_media_from_torrent_hash(thash: str, index: int):
     """
     Removes a media summary from the Redis database by torrent hash and index.
     """
-    if not redis_client:
-        raise ConnectionError("Database connection is not available.")
     
     MediaSummary = get_media_from_torrent_hash(thash, index)
 
@@ -163,12 +154,11 @@ def remove_media_from_torrent_hash(thash: str, index: int):
 
     remove_media(unique_id_key, thash_key, imdb_key)
 
+@redischeck(redis_client)
 def remove_medias_from_torrent_hash(thash: str):
     """
     Removes an entire torrent of media summaries from the Redis database by torrent hash.
     """
-    if not redis_client:
-        raise ConnectionError("Database connection is not available.")
     
     thash_key = get_torrent_hash_key(thash)
     

@@ -165,3 +165,14 @@ def parse_json_to_proto(media_json: dict) -> MediaInfoSummary:
             track_proto.is_sdh = True
 
     return summary
+
+
+
+def redischeck(redis_client):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            if not redis_client:
+                raise ConnectionError("Database connection is not available.")
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
