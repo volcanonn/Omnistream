@@ -2,6 +2,7 @@ import re
 from app.core.database import MediaInfoSummaryContext
 from app.core.proto.media_info_pb2 import MediaInfoSummary
 import uuid
+from functools import wraps # W Wraps?
 
 def parse_hdr_features(hdr_string: str) -> str:
     """
@@ -170,6 +171,7 @@ def parse_json_to_proto(media_json: dict) -> MediaInfoSummary:
 
 def redischeck(redis_client):
     def decorator(func):
+        @wraps(func)
         def wrapper(*args, **kwargs):
             if not redis_client:
                 raise ConnectionError("Database connection is not available.")
