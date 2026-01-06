@@ -4,14 +4,12 @@ from . import services, models
 router = APIRouter(prefix="/torrents")
 
 @router.post("/create/", response_model=models.User)
-def create_new_media(user: models.UserCreate):
+def create_new_media(json_media: models.MediaInfoSummary):
     """
     Endpoint to create a new media.
     """
-    # The 'user' parameter is a UserCreate Pydantic model.
-    # FastAPI automatically validates the incoming request body.
-    new_user = services.create_user(user=user)
-    return new_user
+    services.create_media_summary(json_media)
+    
 
 @router.get("/users/{user_id}", response_model=models.User)
 def read_user(user_id: int):
