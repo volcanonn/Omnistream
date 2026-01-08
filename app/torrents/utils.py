@@ -173,6 +173,7 @@ def redischeck(redis_client):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
+            print("here",redis_client)
             if not redis_client:
                 raise ConnectionError("Database connection is not available.")
             return func(*args, **kwargs)

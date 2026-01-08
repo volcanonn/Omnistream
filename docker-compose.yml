@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  fastapi-app:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - dragonfly_db
+    environment:
+      - REDIS_HOST=dragonfly_db
+    volumes:
+      - .:/app
+
+  dragonfly_db:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    restart: always
+    ulimits:
+      memlock: -1
+    ports:
+      - "6379:6379"
+    volumes:
+      - dragonfly_data:/data
+    command: dragonfly --logtostderr --alsologtostderr
+
+volumes:
+  dragonfly_data:

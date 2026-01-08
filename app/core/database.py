@@ -16,7 +16,7 @@ def connect_to_redis():
     print("Attempting to connect to DragonflyDB...")
 
     DB_HOST = "localhost"
-    DB_PORT = 8085
+    DB_PORT = 6379
 
     try:
         redis_client = redis.Redis(host=DB_HOST, port=DB_PORT, db=0, decode_responses=False)
