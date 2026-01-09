@@ -1,6 +1,5 @@
 from . import models, utils
-from.utils import redischeck
-from app.core.database import redis_client, MediaInfoSummaryContext
+from.utils import redischeck, MediaInfoSummaryContext, redis_client
 from typing import List
 
 def get_unique_key(unique_id: str):
@@ -12,6 +11,7 @@ def get_imdb_key(imdb_id: str):
 def get_torrent_hash_key(hash_id: str, index: int = None):
     return f"thash:{hash_id}{':'+str(index) if index else ''}"
 
+@redischeck()
 def get_children_of_key(key: str):
     keys = []
     cursor = 0
@@ -23,13 +23,13 @@ def get_children_of_key(key: str):
     return keys
 
 
-@redischeck(redis_client)
+@redischeck()
 def get_unique_ids_from_torrent_hash(thash: str):
     thash_key = get_torrent_hash_key(thash)
     thash_keys = get_children_of_key(thash_key)
     return redis_client.mget(thash_keys)
 
-@redischeck(redis_client)
+@redischeck()
 def get_media_from_uniqueid(unique_id: int):
     """
     Fetches a single media by uniqueid.
@@ -42,7 +42,7 @@ def get_media_from_uniqueid(unique_id: int):
         return MediaInfoSummaryContext.ParseFromString(media_info)
     return None
 
-@redischeck(redis_client)
+@redischeck()
 def get_medias_from_uniqueids(unique_ids: List[int]):
     """
     Fetches multiple medias by uniqueids.
@@ -56,7 +56,7 @@ def get_medias_from_uniqueids(unique_ids: List[int]):
         return {unique_id:MediaInfoSummaryContext.ParseFromString(media_info) for media_info,unique_id in zip(media_infos,unique_ids)}
     return None
 
-@redischeck(redis_client)
+@redischeck()
 def get_media_from_imdb(imdb: str):
     """
     Fetches all media by imdb.
@@ -67,7 +67,7 @@ def get_media_from_imdb(imdb: str):
     
     return get_media_from_uniqueid(unique_id_key)
 
-@redischeck(redis_client)
+@redischeck()
 def get_media_from_torrent_hash(thash: str, index: int):
     """
     Fetches a single media by torrent hash and index.
@@ -78,7 +78,7 @@ def get_media_from_torrent_hash(thash: str, index: int):
     
     return get_media_from_uniqueid(unique_id)
 
-@redischeck(redis_client)
+@redischeck()
 def get_medias_from_torrent_hash(thash: str):
     """
     Fetches an entire torrent of media by torrent hash.
@@ -88,13 +88,13 @@ def get_medias_from_torrent_hash(thash: str):
 
     return get_medias_from_uniqueids(unique_ids)
 
-@redischeck(redis_client)
-def create_media_summary(json_media: models.MediaInfoSummary):
+@redischeck()
+def create_media_summary_from_mediainfo(json_media): # need to make a model for mediainfo
     """
-    Creates a new media summary in the Redis database.
+    Creates a new media summary from mediainfo json in the Redis database.
     """
 
-    summary_proto = utils.parse_json_to_proto(json_media) # Need to fix all this
+    summary_proto = utils.parse_mediainfo_json_to_proto(json_media) # Need to fix all this
 
     unique_id = summary_proto.unique_id
     imdb_id = summary_proto.imdb_id
@@ -114,10 +114,12 @@ def create_media_summary(json_media: models.MediaInfoSummary):
     pipe.sadd(imdb_key, unique_id) # might not be able to do always
     #pipe.execute()
 
+@redischeck()
 def remove_media(unique_id_key: str, thash_key: str, imdb_key: str):
     redis_client.delete(unique_id_key, thash_key)
     redis_client.srem(imdb_key, unique_id_key[10:-1])
 
+@redischeck()
 def remove_medias(unique_id_keys: List[str], thash_keys: List[str], imdb_keys: List[str]):
     pipe = redis_client.pipeline()
     pipe.delete(*[unique_id_key for unique_id_key in unique_id_keys], *[thash_key for thash_key in thash_keys])
@@ -125,7 +127,7 @@ def remove_medias(unique_id_keys: List[str], thash_keys: List[str], imdb_keys: L
         pipe.srem(imdb_key, unique_id_key[10:0]) # Could optimize this whole thing to just do different srems for each imdb. But i can do that latter
     pipe.execute()
 
-@redischeck(redis_client)
+@redischeck()
 def remove_media_from_uniqueid(unique_id: int):
     """
     Removes a media summary from the Redis database by uniqueid.
@@ -140,7 +142,7 @@ def remove_media_from_uniqueid(unique_id: int):
 
     remove_media(unique_id_key, thash_key, imdb_key)
 
-@redischeck(redis_client)
+@redischeck()
 def remove_media_from_torrent_hash(thash: str, index: int):
     """
     Removes a media summary from the Redis database by torrent hash and index.
@@ -154,7 +156,7 @@ def remove_media_from_torrent_hash(thash: str, index: int):
 
     remove_media(unique_id_key, thash_key, imdb_key)
 
-@redischeck(redis_client)
+@redischeck()
 def remove_medias_from_torrent_hash(thash: str):
     """
     Removes an entire torrent of media summaries from the Redis database by torrent hash.

@@ -1,14 +1,23 @@
 from fastapi import FastAPI
-
-from app.core.database import connect_to_redis, close_redis_connection
-from app.torrents.routes import router as torrents_router
+import asyncio
+from app.core.database import redis_client
 from contextlib import asynccontextmanager
+from app.torrents.routes import router as torrents_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    connect_to_redis()
+    while True:
+        try:
+            await redis_client.ping()
+            print("DragonflyDB Connected!")
+            break
+        except Exception:
+            print("DragonflyDB not ready. Retrying in 2s...")
+            await asyncio.sleep(2)
+    
     yield
-    close_redis_connection()
+
+    await redis_client.close()
 
 app = FastAPI(
     title="CinephileDB",
@@ -16,7 +25,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Include the router from the movies API module
 app.include_router(torrents_router, prefix="/api/v1", tags=["Torrents"])
 
 @app.get("/api/v1/health", tags=["Health"])

@@ -30,7 +30,6 @@ message SubtitleSummary {
   string source = 4;                  // e.g., "iTunes WEB-DL"
 }
 
-// The main "Hot" data object to be stored in KeyDB.
 // Contains all the essential metadata parsed from the media file and its name.
 message MediaInfoSummary {
   // --- Core Media Identifiers ---

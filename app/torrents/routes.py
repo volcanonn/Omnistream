@@ -4,11 +4,11 @@ from . import services, models
 router = APIRouter(prefix="/torrents")
 
 @router.post("/create/") #, response_model=models.User
-def create_new_media(json_media: models.MediaInfoSummary):
+def create_mediainfo(json_media: models.MediaInfoSummary):
     """
     Endpoint to create a new media.
     """
-    services.create_media_summary(json_media)
+    services.create_media_summary_from_mediainfo(json_media)
     
 
 '''@router.get("/users/{user_id}", response_model=models.User)

@@ -1,16 +1,18 @@
-version: '3.8'
 
 services:
   fastapi-app:
     build: .
     ports:
       - "8000:8000"
-    depends_on:
-      - dragonfly_db
     environment:
       - REDIS_HOST=dragonfly_db
+      - REDIS_PORT=6379
+      - PYTHONUNBUFFERED=1
     volumes:
       - .:/app
+    depends_on:
+      dragonfly_db:
+        condition: service_healthy 
 
   dragonfly_db:
     image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
@@ -22,6 +24,11 @@ services:
     volumes:
       - dragonfly_data:/data
     command: dragonfly --logtostderr --alsologtostderr
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
   dragonfly_data:

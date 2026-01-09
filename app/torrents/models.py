@@ -30,6 +30,9 @@ class SubtitleSummary(BaseModel):
 
 class MediaInfoSummary(BaseModel):
     """The main "Hot" data object to be stored in Redis."""
+    # --- Parser Info ---
+    # Need to update media info.proto add version of mediainfo and version of omnistream
+
     # --- Core Media Identifiers ---
     title: Optional[str] = Field(None, description='The title of the movie or episode.')
     imdb_id: Optional[str] = Field(None, description='e.g., "tt31193180"')

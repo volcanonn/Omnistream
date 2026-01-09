@@ -1,8 +1,14 @@
 import re
-from app.core.database import MediaInfoSummaryContext
 from app.core.proto.media_info_pb2 import MediaInfoSummary
+from app.core.database import redis_client
 import uuid
 from functools import wraps # W Wraps?
+
+MediaInfoSummaryContext = MediaInfoSummary()
+
+
+def parse_mediainfo_json_to_proto(media_json: dict) -> MediaInfoSummary:
+    pass
 
 def parse_hdr_features(hdr_string: str) -> str:
     """
@@ -55,11 +61,12 @@ def parse_hdr_features(hdr_string: str) -> str:
     # Sort for consistent ordering, e.g., "DV, HDR10, HDR10+"
     return ", ".join(sorted(list(features)))
 
-def parse_json_to_proto(media_json: dict) -> MediaInfoSummary:
+def parse_mediainfo_json_to_proto_old(media_json: dict) -> MediaInfoSummary:
     """
     Parses a complex dictionary from mediainfo-json into our compact protobuf message.
     This function contains all the data cleaning and extraction logic.
     """
+
     summary = MediaInfoSummaryContext
     mediainfo = media_json.get("media_info_serialized", None)
     if mediainfo == None:
@@ -169,11 +176,10 @@ def parse_json_to_proto(media_json: dict) -> MediaInfoSummary:
 
 
 
-def redischeck(redis_client):
+def redischeck():
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            print("here",redis_client)
             if not redis_client:
                 raise ConnectionError("Database connection is not available.")
             return func(*args, **kwargs)
