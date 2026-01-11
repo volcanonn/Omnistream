@@ -8,7 +8,12 @@ MediaInfoSummaryContext = MediaInfoSummary()
 
 
 def parse_mediainfo_json_to_proto(media_json: dict) -> MediaInfoSummary:
-    pass
+    summary = MediaInfoSummaryContext
+    for track in media_json["media"]["track"]:
+        match track["@type"]:
+            case "General":
+                summary.title = track["Title"]
+
 
 def parse_hdr_features(hdr_string: str) -> str:
     """
