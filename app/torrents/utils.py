@@ -9,6 +9,7 @@ MediaInfoSummaryContext = MediaInfoSummary()
 
 def parse_mediainfo_json_to_proto(media_json: dict) -> MediaInfoSummary:
     summary = MediaInfoSummaryContext
+    summary.mediainfoversion = media_json["creatingLibrary"]["version"]
     for track in media_json["media"]["track"]:
         match track["@type"]:
             case "General":
