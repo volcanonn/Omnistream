@@ -14,6 +14,7 @@ def parse_mediainfo_json_to_proto(media_json: dict) -> MediaInfoSummary:
         match track["@type"]:
             case "General":
                 summary.title = track["Title"]
+                #summary.unique_id = track["UniqueID"] or 
 
 
 def parse_hdr_features(hdr_string: str) -> str:
