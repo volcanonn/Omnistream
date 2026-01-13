@@ -1,14 +1,15 @@
 from fastapi import APIRouter, HTTPException
-from . import services, models
+from .models import *
+from .services import *
 
 router = APIRouter(prefix="/torrents")
 
 @router.post("/create/") #, response_model=models.User
-def create_mediainfo(json_media: models.MediaInfoSummary):
+def create_mediainfo(json_media: MediaInfoFile):
     """
     Endpoint to create a new media.
     """
-    services.create_media_summary_from_mediainfo(json_media)
+    create_media_summary_from_mediainfo(json_media)
     
 
 '''@router.get("/users/{user_id}", response_model=models.User)

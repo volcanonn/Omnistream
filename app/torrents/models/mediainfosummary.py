@@ -32,6 +32,7 @@ class MediaInfoSummary(BaseModel):
     """The main "Hot" data object to be stored in Redis."""
     # --- Parser Info ---
     # Need to update media info.proto add version of mediainfo and version of omnistream
+    mediainfo_version: str = Field("", description='Version of mediainfo that was uses.')
 
     # --- Core Media Identifiers ---
     title: Optional[str] = Field(None, description='The title of the movie or episode.')
