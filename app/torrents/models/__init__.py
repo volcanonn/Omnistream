@@ -1,4 +1,5 @@
 from .mediainfo import MediaInfoFile
-from .mediainfosummary import MediaInfoSummary
+from .mediainfosummary import MediaInfoSummary as MediaInfoSummaryModel
+from .unit3dtracker import Unit3dTorrent
 
-__all__  = ["MediaInfoFile","MediaInfoSummary"]
+__all__  = ["MediaInfoFile","MediaInfoSummaryModel","Unit3dTorrent"]

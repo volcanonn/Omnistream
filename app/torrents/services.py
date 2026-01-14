@@ -1,5 +1,7 @@
 from . import models, utils
-from.utils import redischeck, MediaInfoSummaryContext, redis_client
+from app.core.database import redis_client
+from.utils import redischeck
+from app.core.proto.media_info_pb2 import MediaInfoSummary # type: ignore
 from typing import List
 
 def get_unique_key(unique_id: str):
@@ -33,7 +35,9 @@ def get_unique_ids_from_torrent_hash(thash: str):
 def get_media_from_uniqueid(unique_id: int):
     """
     Fetches a single media by uniqueid.
-    """   
+    """
+
+    MediaInfoSummaryContext = MediaInfoSummary()
 
     unique_id_key = get_unique_key(unique_id)
     media_info = redis_client.get(unique_id_key)
@@ -47,6 +51,8 @@ def get_medias_from_uniqueids(unique_ids: List[int]):
     """
     Fetches multiple medias by uniqueids.
     """
+
+    MediaInfoSummaryContext = MediaInfoSummary()
 
     unique_id_keys = [get_unique_key(unique_id) for unique_id in unique_ids]
 
@@ -89,12 +95,12 @@ def get_medias_from_torrent_hash(thash: str):
     return get_medias_from_uniqueids(unique_ids)
 
 @redischeck()
-def create_media_summary_from_mediainfo(json_media): # need to make a model for mediainfo
+async def create_media_summary_from_mediainfo(json_media):
     """
     Creates a new media summary from mediainfo json in the Redis database.
     """
 
-    summary_proto = utils.parse_mediainfo_json_to_proto(json_media) # Need to fix all this
+    summary_proto = utils.parse_mediainfo_json_to_proto(json_media)
 
     unique_id = summary_proto.unique_id
     imdb_id = summary_proto.imdb_id
@@ -109,9 +115,37 @@ def create_media_summary_from_mediainfo(json_media): # need to make a model for 
 
     #pipe = redis_client.pipeline()
     pipe = redis_client # Dont need a pipeline for now
-    pipe.set(unique_id_key, serialized_data)
-    pipe.set(thash_key, unique_id)
-    pipe.sadd(imdb_key, unique_id) # might not be able to do always
+    await pipe.set(unique_id_key, serialized_data)
+    await pipe.set(thash_key, unique_id)
+    await pipe.sadd(imdb_key, unique_id) # might not be able to do always
+    #pipe.execute()
+
+@redischeck()
+async def create_media_summary_from_tracker(json_media):
+    """
+    Creates a new media summary from tracker json in the Redis database.
+    """
+
+    summary_proto = utils.parse_tracker_json_to_proto(json_media)
+
+    print(summary_proto)
+
+    unique_id = summary_proto.unique_id
+    imdb_id = summary_proto.imdb_id
+    torrent_hash = summary_proto.torrent_hash
+    torrent_file_index = summary_proto.torrent_file_index
+
+    serialized_data = summary_proto.SerializeToString()
+
+    unique_id_key = get_unique_key(unique_id)
+    imdb_key = get_imdb_key(imdb_id)
+    thash_key = get_torrent_hash_key(torrent_hash, torrent_file_index)
+
+    #pipe = redis_client.pipeline()
+    pipe = redis_client # Dont need a pipeline for now
+    await pipe.set(unique_id_key, serialized_data)
+    await pipe.set(thash_key, unique_id)
+    await pipe.sadd(imdb_key, unique_id) # might not be able to do always
     #pipe.execute()
 
 @redischeck()

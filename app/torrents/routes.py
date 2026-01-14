@@ -4,20 +4,16 @@ from .services import *
 
 router = APIRouter(prefix="/torrents")
 
-@router.post("/create/") #, response_model=models.User
-def create_mediainfo(json_media: MediaInfoFile):
+@router.post("/create") #, response_model=models.User
+async def create_mediainfo_json(json_media: MediaInfoFile):
     """
     Endpoint to create a new media.
     """
-    create_media_summary_from_mediainfo(json_media)
-    
+    await create_media_summary_from_mediainfo(json_media)
 
-'''@router.get("/users/{user_id}", response_model=models.User)
-def read_user(user_id: int):
+@router.post("/create/tracker") #, response_model=models.User
+async def create_mediainfo_text(json_media: Unit3dTorrent):
     """
-    Endpoint to get a user by their ID.
+    Endpoint to create a new media with tracker data.
     """
-    db_user = services.get_user(user_id=user_id)
-    if db_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return db_user'''
+    await create_media_summary_from_tracker(json_media)

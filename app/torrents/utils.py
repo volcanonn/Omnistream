@@ -1,14 +1,12 @@
 import re
-from app.core.proto.media_info_pb2 import MediaInfoSummary
+from app.core.proto.media_info_pb2 import MediaInfoSummary # type: ignore
 from app.core.database import redis_client
+from .models import *
 import uuid
 from functools import wraps # W Wraps?
 
-MediaInfoSummaryContext = MediaInfoSummary()
-
-
 def parse_mediainfo_json_to_proto(media_json: dict) -> MediaInfoSummary:
-    summary = MediaInfoSummaryContext
+    summary = MediaInfoSummary()
     summary.mediainfo_version = media_json.creating_library.version
     for track in media_json.media.tracks:
         match track.track_type:
@@ -16,7 +14,6 @@ def parse_mediainfo_json_to_proto(media_json: dict) -> MediaInfoSummary:
                 summary.title = track.title
                 summary.unique_id = track.unique_id or "jiggle"
     return summary
-
 
 def parse_hdr_features(hdr_string: str) -> str:
     """
@@ -69,38 +66,82 @@ def parse_hdr_features(hdr_string: str) -> str:
     # Sort for consistent ordering, e.g., "DV, HDR10, HDR10+"
     return ", ".join(sorted(list(features)))
 
-def parse_mediainfo_json_to_proto_old(media_json: dict) -> MediaInfoSummary:
-    """
-    Parses a complex dictionary from mediainfo-json into our compact protobuf message.
-    This function contains all the data cleaning and extraction logic.
-    """
+def parse_tracker_json_to_proto(tracker_json: Unit3dTorrent) -> MediaInfoSummary:
+    mediainfo_dict = parse_mediainfo_text_to_dict(tracker_json.attributes.media_info)
+    if mediainfo_dict.get("errors"):
+        return {"errors":True}
+    #print(mediainfo_dict)
+    tracker_proto = tracker_dict_to_proto(tracker_json, mediainfo_dict["General"]["Complete name"])
+    mediainfo_proto = mediainfo_dict_to_proto(mediainfo_dict)
+    finalproto = MediaInfoSummary()
+    finalproto.MergeFrom(tracker_proto)
+    finalproto.MergeFrom(mediainfo_proto)
+    return finalproto
 
-    summary = MediaInfoSummaryContext
-    mediainfo = media_json.get("media_info_serialized", None)
-    if mediainfo == None:
-        return
+
+def parse_mediainfo_text_to_dict(media_text: str) -> dict:
+    removewhitespace = re.compile(r'^[\\. ]+')
+    splitdict = re.compile(r'(?:[\\. ]+:? |[\\. ]*: )')
+    try:
+        torrentinfo = {}
+        for stream in re.split('\n ?\n',media_text.replace("\r", "")):
+            text = stream.split("\n")
+            id = text.pop(0)
+            if id[:6] == "Report":
+                torrentinfo.update({"Report":re.split(splitdict,id)[1]})
+                continue
+            ogid = id
+            if id.find(" #"):
+                id = id.split(" #")[0]
+            if not torrentinfo.get(id):
+                torrentinfo.update({id:[]})
+            info = []
+            ConformanceInfo = [False,0]
+            for value in text:
+                newvalue = re.split(removewhitespace,value,maxsplit=1).pop()
+                dictparts = re.split(splitdict,newvalue,maxsplit=1)
+                if '' in dictparts:
+                    keypart = f"key: {dictparts[0]}"
+                    if dictparts[0] == '':
+                        keypart = ''
+                    print(f"Dict is missing part! torrent:  id: {ogid}" + keypart)
+                    continue
+                if len(dictparts) != 2:
+                    print(f"Dict doesn't have exactly key and value! torrent:  id: {ogid} key: {dictparts[0]}")
+                    continue
+                if dictparts[0] == "Conformance errors":
+                    ConformanceInfo[0] = True
+                    ConformanceInfo[1] = len(info)
+                    dictparts = ['Errors', dict([dictparts])]
+                    info.append(dictparts)
+                    continue
+                if ConformanceInfo[0] == True:
+                    info[ConformanceInfo[1]][1].update(dict([dictparts]))
+                    continue
+                info.append(dictparts)
+            if id == "General":
+                torrentinfo.update({id:dict(info)})
+                continue
+            torrentinfo[id].append(dict(info))
+        return torrentinfo
+        #aitherscrapped[pagenum][torrentnum]["attributes"].update({'media_info_serialized':torrentinfo})
+    except Exception as e:
+        return {"errors":True}
+
+def mediainfo_dict_to_proto(mediainfo: dict) -> MediaInfoSummary:
+    summary = MediaInfoSummary()
+
     general = mediainfo.get("General", {})
 
-    # --- 1. Populate Core Identifiers ---
-    # Extract the hex part of the Unique ID, or generate a new one
+    summary.container = general.get("Format", "").lower()
+    
     unique_id_raw = general.get("Unique ID", "")
+
     match = re.search(r'\(0x([0-9A-F]+)\)', unique_id_raw)
     if match:
         summary.unique_id = match.group(1).lower()
     else:
-        summary.unique_id = uuid.uuid4().hex
-
-    summary.title = media_json.get("name", "") # Get title before year
-    summary.imdb_id = f"tt{str(media_json.get('imdb_id', '')).zfill(7)}"
-    summary.tmdb_id = str(media_json.get("tmdb_id", ""))
-    summary.size = media_json.get("size", 0)
-    summary.container = general.get("Format", "").lower()
-    summary.torrent_hash = media_json.get("info_hash", "")[-32:]
-    for i,v in enumerate(media_json.get("files", [])):
-        if v["name"] == general.get("Complete name"):
-            summary.torrent_file_index = i
-            #print(media_json.get("info_hash", "")[-32:],i)
-    
+        summary.unique_id = uuid.uuid4().hex # Need to change to sha or smth else cause this aint gonna work fam fo shizzle city boooyyyyyy
 
     # --- 2. Populate Video Tracks ---
     for track_dict in mediainfo.get("Video", []):
@@ -132,7 +173,7 @@ def parse_mediainfo_json_to_proto_old(media_json: dict) -> MediaInfoSummary:
         elif "TrueHD" in commercial_name:
             track_proto.format_tag = "TrueHD"
         elif "Dolby Digital" in commercial_name:
-            track_proto.format_tag = "DD"
+            track_proto.format_tag = "DD" # Need to add DD+ and should this use Format or Codec ID?
         else:
             track_proto.format_tag = track_dict.get("Format", "")
 
@@ -183,6 +224,25 @@ def parse_mediainfo_json_to_proto_old(media_json: dict) -> MediaInfoSummary:
     return summary
 
 
+def tracker_dict_to_proto(tracker_dict: Unit3dTorrent, filename = None) -> MediaInfoSummary:
+    summary = MediaInfoSummary()
+
+    data = tracker_dict.attributes
+
+    summary.title = data.name # Get title before year
+    summary.imdb_id = f"tt{str(data.imdb_id).zfill(7)}"
+    summary.tmdb_id = str(data.tmdb_id)
+    summary.size = data.size
+    summary.torrent_hash = data.info_hash[-32:] # just makin up shi
+    summary.quality = data.type
+    
+    if filename:
+        for i,v in enumerate(data.files):
+            if v.name == filename:
+                summary.torrent_file_index = i
+                #print(media_json.get("info_hash", "")[-32:],i)
+
+    return summary
 
 def redischeck():
     def decorator(func):
