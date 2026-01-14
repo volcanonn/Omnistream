@@ -120,6 +120,25 @@ async def create_media_summary_from_mediainfo(json_media):
     await pipe.sadd(imdb_key, unique_id) # might not be able to do always
     #pipe.execute()
 
+    response = models.MediaResponse(
+        status="success",
+        unique_id=unique_id,
+        imdb_id=imdb_id,
+        torrent_hash=torrent_hash,
+        index=torrent_file_index
+    )
+
+    return response
+
+# These two are the same thing just with different functions at the top
+# Can they be combined?
+# The top one doesn't really work correctly cause there is no imdb or torrent hash so when it adds to dragondb
+# The key is just "" which will confuse later on
+# so either clients need to add those and i need to update the models or it stores it without those
+# I think people should be able to do both with the uniqueid serving as the real antiduplicate
+# And i need to add antidupe checking
+
+
 @redischeck()
 async def create_media_summary_from_tracker(json_media):
     """
@@ -147,6 +166,16 @@ async def create_media_summary_from_tracker(json_media):
     await pipe.set(thash_key, unique_id)
     await pipe.sadd(imdb_key, unique_id) # might not be able to do always
     #pipe.execute()
+
+    response = models.MediaResponse(
+        status="success",
+        unique_id=unique_id,
+        imdb_id=imdb_id,
+        torrent_hash=torrent_hash,
+        index=torrent_file_index
+    )
+
+    return response
 
 @redischeck()
 def remove_media(unique_id_key: str, thash_key: str, imdb_key: str):
