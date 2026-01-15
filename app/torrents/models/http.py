@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any, List
 from enum import Enum
-from pydantic import BaseModel, Field, model_validator, ConfigDict
+from pydantic import BaseModel, Field, model_validator, ConfigDict, RootModel
 from .mediainfosummary import MediaInfoSummary
 
 class JobStatus(str, Enum):
@@ -33,13 +33,13 @@ class MediaDataResponse(BaseModel):
 
     status: JobStatus = Field(..., description="API Status")
     
-    # This allows you to pass the MediaInfoSummary object OR a raw dictionary.
-    # It is Optional, so if the data isn't found, you can just return status='failed'.
-    data: Optional[MediaInfoSummary] = Field(None, description="The parsed media dictionary")
+    data: Optional[List[MediaInfoSummary]] = Field(
+        None, 
+        description="A list of media summaries. Can be multiple items."
+    )
     
     # Optional error message if status is failed
     error: Optional[str] = Field(None, description="Error details if any")
-
 
 class MediaRequestParams(BaseModel):
     """

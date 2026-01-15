@@ -4,7 +4,9 @@ from.utils import redischeck
 from app.core.proto.media_info_pb2 import MediaInfoSummary # type: ignore
 from typing import List
 
-def get_unique_key(unique_id: str):
+def get_unique_key(unique_id):
+    if type(unique_id) == bytes:
+        unique_id = unique_id.decode('utf-8')
     return f"mediafile:{unique_id}"
 
 def get_imdb_key(imdb_id: str):
@@ -24,7 +26,6 @@ async def get_children_of_key(key: str):
             break
     return keys
 
-
 @redischeck()
 async def get_unique_ids_from_torrent_hash(thash: str):
     thash_key = get_torrent_hash_key(thash)
@@ -32,36 +33,44 @@ async def get_unique_ids_from_torrent_hash(thash: str):
     return await redis_client.mget(thash_keys)
 
 @redischeck()
-async def get_media_from_uniqueid(unique_id: int):
+async def get_media_from_uniqueid(unique_id):
     """
     Fetches a single media by uniqueid.
     """
-
-    MediaInfoSummaryContext = MediaInfoSummary()
 
     unique_id_key = get_unique_key(unique_id)
     media_info = await redis_client.get(unique_id_key)
     
     if media_info:
-        return MediaInfoSummaryContext.ParseFromString(media_info)
+        MediaInfoSummaryContext = MediaInfoSummary()
+        MediaInfoSummaryContext.ParseFromString(media_info)
+        return utils.mediainfo_protobuf_to_dict(MediaInfoSummaryContext)
     return None
 
-# Both of these need to return in mediainfosummarymodel format. Convert from protobuf to dict with a new function in utils
-
 @redischeck()
-async def get_medias_from_uniqueids(unique_ids: List[int]):
+async def get_medias_from_uniqueids(unique_ids: List):
     """
     Fetches multiple medias by uniqueids.
     """
-
-    MediaInfoSummaryContext = MediaInfoSummary()
 
     unique_id_keys = [get_unique_key(unique_id) for unique_id in unique_ids]
 
     media_infos = await redis_client.mget(unique_id_keys)
     
     if len(media_infos) > 0:
-        return {unique_id:MediaInfoSummaryContext.ParseFromString(media_info) for media_info,unique_id in zip(media_infos,unique_ids)}
+        output = []
+        MediaInfoSummaryContext = MediaInfoSummary()
+        for media_info in media_infos:
+            MediaInfoSummaryContext.Clear()
+            MediaInfoSummaryContext.ParseFromString(media_info)
+            output.append(utils.mediainfo_protobuf_to_dict(MediaInfoSummaryContext))
+        """output = {}
+        MediaInfoSummaryContext = MediaInfoSummary()
+        for media_info,unique_id in zip(media_infos,unique_ids):
+            MediaInfoSummaryContext.Clear()
+            MediaInfoSummaryContext.ParseFromString(media_info)
+            output.update({unique_id:utils.mediainfo_protobuf_to_dict(MediaInfoSummaryContext)})"""
+        return output
     return None
 
 @redischeck()
@@ -71,9 +80,9 @@ async def get_media_from_imdb(imdb: str):
     """
 
     imdb_key = get_imdb_key(imdb)
-    unique_id_key = await redis_client.get(imdb_key)
+    unique_id = await redis_client.get(imdb_key)
     
-    return await get_media_from_uniqueid(unique_id_key)
+    return await get_media_from_uniqueid(unique_id)
 
 @redischeck()
 async def get_media_from_torrent_hash(thash: str, index: int):
@@ -93,7 +102,6 @@ async def get_medias_from_torrent_hash(thash: str):
     """
 
     unique_ids = await get_unique_ids_from_torrent_hash(thash)
-
     return await get_medias_from_uniqueids(unique_ids)
 
 @redischeck()
@@ -103,22 +111,23 @@ async def get_medias_from_imdb(imdb: str): # Need to make this actualy do what i
     """
 
     imdb_key = get_imdb_key(imdb)
-    unique_id_key = await redis_client.get(imdb_key)
+    unique_id = await redis_client.get(imdb_key)
     
-    return await get_media_from_uniqueid(unique_id_key)
+    return await get_media_from_uniqueid(unique_id)
 
 async def process_lookup(params: models.MediaRequestParams) -> models.MediaDataResponse:
     if params.unique_id:
-        result = await get_media_from_uniqueid(params.unique_id)
+        result = [await get_media_from_uniqueid(params.unique_id)]
         
     elif params.imdb_id:
         result = await get_medias_from_imdb(params.imdb_id)
     
     elif params.index:
-        result = await get_media_from_torrent_hash(params.torrent_hash, params.index)
+        result = [await get_media_from_torrent_hash(params.torrent_hash, params.index)]
 
     elif params.torrent_hash:
         result = await get_medias_from_torrent_hash(params.torrent_hash)
+        print(result)
 
     return models.MediaDataResponse(
         status="success",
@@ -220,7 +229,7 @@ async def remove_medias(unique_id_keys: List[str], thash_keys: List[str], imdb_k
     await pipe.execute()
 
 @redischeck()
-async def remove_media_from_uniqueid(unique_id: int):
+async def remove_media_from_uniqueid(unique_id: str):
     """
     Removes a media summary from the Redis database by uniqueid.
     """

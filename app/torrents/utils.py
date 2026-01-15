@@ -1,9 +1,22 @@
 import re
 from app.core.proto.media_info_pb2 import MediaInfoSummary # type: ignore
+from google.protobuf.json_format import MessageToDict
 from app.core.database import redis_client
 from .models import *
 import uuid
 from functools import wraps # W Wraps?
+
+def mediainfo_protobuf_to_dict(media_proto: MediaInfoSummary) -> MediaInfoSummaryModel:
+    data_dict = MessageToDict(media_proto,
+                  preserving_proto_field_name=True,
+                  use_integers_for_enums=False
+    )
+    try:
+        mediainfosummaryoutput = MediaInfoSummaryModel.model_validate(data_dict)
+        return mediainfosummaryoutput
+    except ValueError as e:
+        print(f"Validation Error: {e}")
+        return {"errors": True}
 
 def parse_mediainfo_json_to_proto(media_json: dict) -> MediaInfoSummary:
     summary = MediaInfoSummary()
