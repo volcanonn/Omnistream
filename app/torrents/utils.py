@@ -38,19 +38,18 @@ def parse_hdr_features(hdr_string: str) -> str:
 
     features = set()
 
-    # 1. Check for Dolby Vision
+    # Check for Dolby Vision
     is_dv = "Dolby Vision" in hdr_string
     if is_dv:
         features.add("DV")
 
-    # 2. Check for HDR10+
+    # Check for HDR10+
     if "HDR10+" in hdr_string:
         features.add("HDR10+")
 
-    # 3. Determine HDR10 compatibility
+    # Determine HDR10 compatibility
     is_hdr10_compatible = "HDR10 compatible" in hdr_string
 
-    # The robust check: if it's DV, check the profile number.
     # Profiles 7 and 8 are HDR10 compatible. Profile 5 is not.
     if is_dv:
         profile_match = re.search(r'Profile (\d+)|dvhe\.(\d+)', hdr_string)
@@ -69,7 +68,7 @@ def parse_hdr_features(hdr_string: str) -> str:
     if is_hdr10_compatible:
         features.add("HDR10")
         
-    # 4. Fallback for plain HDR10 (if not already found via DV compatibility)
+    # Fallback for plain HDR10 (if not already found via DV compatibility)
     if "SMPTE ST 2086" in hdr_string and "HDR10" not in features:
         features.add("HDR10")
 
@@ -156,7 +155,7 @@ def mediainfo_dict_to_proto(mediainfo: dict) -> MediaInfoSummary:
     else:
         summary.unique_id = uuid.uuid4().hex # Need to change to sha or smth else cause this aint gonna work fam fo shizzle city boooyyyyyy
 
-    # --- 2. Populate Video Tracks ---
+    # Populate Video Tracks
     for track_dict in mediainfo.get("Video", []):
         track_proto = summary.video_tracks.add()
         track_proto.codec = track_dict.get("Format", "")
@@ -174,7 +173,7 @@ def mediainfo_dict_to_proto(mediainfo: dict) -> MediaInfoSummary:
         hdr_format_string = track_dict.get("HDR format", "")
         track_proto.hdr = parse_hdr_features(hdr_format_string)
 
-    # --- 3. Populate Audio Tracks ---
+    # Populate Audio Tracks
     for track_dict in mediainfo.get("Audio", []):
         track_proto = summary.audio_tracks.add()
         track_proto.language = track_dict.get("Language", "")
@@ -209,7 +208,7 @@ def mediainfo_dict_to_proto(mediainfo: dict) -> MediaInfoSummary:
         if "descriptive" in title:
             track_proto.is_descriptive = True
 
-    # --- 4. Populate Subtitle Tracks ---
+    # Populate Subtitle Tracks
     for track_dict in mediainfo.get("Text", []):
         track_proto = summary.subtitle_tracks.add()
         track_proto.language = track_dict.get("Language", "")
@@ -218,12 +217,10 @@ def mediainfo_dict_to_proto(mediainfo: dict) -> MediaInfoSummary:
         # Get the format string from the JSON
         format_str = track_dict.get("Format", "")
 
-        # Use an if/elif/else block to handle multiple known formats
         if format_str == "PGS":
             track_proto.format = "PGS"
         elif format_str == "ASS":
             track_proto.format = "ASS"
-        # We can also handle SSA, the predecessor to ASS
         elif format_str == "SSA":
             track_proto.format = "SSA"
         # All other text-based formats (like UTF-8) will be standardized as SRT

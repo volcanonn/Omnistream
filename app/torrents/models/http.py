@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any, List
 from enum import Enum
-from pydantic import BaseModel, Field, model_validator, ConfigDict, RootModel
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 from .mediainfosummary import MediaInfoSummary
 
 class JobStatus(str, Enum):

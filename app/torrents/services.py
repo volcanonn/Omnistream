@@ -12,11 +12,14 @@ def get_unique_key(unique_id):
 def get_imdb_key(imdb_id: str):
     return f"imdb:{imdb_id}"
 
-def get_torrent_hash_key(hash_id: str, index: int = None):
-    return f"thash:{hash_id}{':'+str(index) if index else ''}"
+def get_torrent_hash_key(hash_id: str): #, index: int = None
+    return f"thash:{hash_id}" #{':'+str(index) if index else ''}
 
 @redischeck()
-async def get_children_of_key(key: str):
+async def get_children_of_key(key: str): # NEVER USE THIS SHIT FUNCTION AGAIN IM RETARDED
+    """
+    DONT USE TS.
+    """
     keys = []
     cursor = 0
     while True:
@@ -29,8 +32,8 @@ async def get_children_of_key(key: str):
 @redischeck()
 async def get_unique_ids_from_torrent_hash(thash: str):
     thash_key = get_torrent_hash_key(thash)
-    thash_keys = await get_children_of_key(thash_key)
-    return await redis_client.mget(thash_keys)
+    thash_map = await redis_client.hgetall(thash_key)
+    return list(thash_map.values())
 
 @redischeck()
 async def get_media_from_uniqueid(unique_id):
@@ -74,26 +77,18 @@ async def get_medias_from_uniqueids(unique_ids: List):
     return None
 
 @redischeck()
-async def get_media_from_imdb(imdb: str):
-    """
-    Fetches all media by imdb.
-    """
-
-    imdb_key = get_imdb_key(imdb)
-    unique_id = await redis_client.get(imdb_key)
-    
-    return await get_media_from_uniqueid(unique_id)
-
-@redischeck()
-async def get_media_from_torrent_hash(thash: str, index: int):
+async def get_media_from_torrent_index(thash: str, index: int):
     """
     Fetches a single media by torrent hash and index.
     """ 
 
-    thash_key = get_torrent_hash_key(thash, index)
-    unique_id = await redis_client.get(thash_key)
+    thash_key = get_torrent_hash_key(thash)
+    unique_id = await redis_client.hget(thash_key, index)
     
     return await get_media_from_uniqueid(unique_id)
+
+# Need to add checks to all the redis_client gets
+# Also i think all torrent indexes have to be strings cause they do
 
 @redischeck()
 async def get_medias_from_torrent_hash(thash: str):
@@ -105,15 +100,18 @@ async def get_medias_from_torrent_hash(thash: str):
     return await get_medias_from_uniqueids(unique_ids)
 
 @redischeck()
-async def get_medias_from_imdb(imdb: str): # Need to make this actualy do what it says it does
+async def get_medias_from_imdb(imdb: str):
     """
     Fetches all media by imdb.
     """
 
     imdb_key = get_imdb_key(imdb)
-    unique_id = await redis_client.get(imdb_key)
+    unique_ids = await redis_client.smembers(imdb_key)
+
+    if not unique_ids:
+        return []
     
-    return await get_media_from_uniqueid(unique_id)
+    return await get_medias_from_uniqueids(unique_ids)
 
 async def process_lookup(params: models.MediaRequestParams) -> models.MediaDataResponse:
     if params.unique_id:
@@ -123,7 +121,7 @@ async def process_lookup(params: models.MediaRequestParams) -> models.MediaDataR
         result = await get_medias_from_imdb(params.imdb_id)
     
     elif params.index:
-        result = [await get_media_from_torrent_hash(params.torrent_hash, params.index)]
+        result = [await get_media_from_torrent_index(params.torrent_hash, params.index)]
 
     elif params.torrent_hash:
         result = await get_medias_from_torrent_hash(params.torrent_hash)
@@ -151,12 +149,12 @@ async def create_media_summary_from_mediainfo(json_media):
 
     unique_id_key = get_unique_key(unique_id)
     imdb_key = get_imdb_key(imdb_id)
-    thash_key = get_torrent_hash_key(torrent_hash, torrent_file_index)
+    thash_key = get_torrent_hash_key(torrent_hash)
 
     #pipe = redis_client.pipeline()
     pipe = redis_client # Dont need a pipeline for now
     await pipe.set(unique_id_key, serialized_data)
-    await pipe.set(thash_key, unique_id)
+    await pipe.hset(thash_key, str(torrent_file_index), unique_id)#await pipe.set(thash_key, unique_id)
     await pipe.sadd(imdb_key, unique_id) # might not be able to do always
     #pipe.execute()
 
@@ -201,7 +199,7 @@ async def create_media_summary_from_tracker(json_media):
     #pipe = redis_client.pipeline()
     pipe = redis_client # Dont need a pipeline for now
     await pipe.set(unique_id_key, serialized_data)
-    await pipe.set(thash_key, unique_id)
+    await pipe.hset(thash_key, str(torrent_file_index), unique_id)#await pipe.set(thash_key, unique_id)
     await pipe.sadd(imdb_key, unique_id) # might not be able to do always
     #pipe.execute()
 
@@ -216,65 +214,68 @@ async def create_media_summary_from_tracker(json_media):
     return response
 
 @redischeck()
-async def remove_media(unique_id_key: str, thash_key: str, imdb_key: str):
-    await redis_client.delete(unique_id_key, thash_key)
-    await redis_client.srem(imdb_key, unique_id_key[10:-1])
-
-@redischeck()
-async def remove_medias(unique_id_keys: List[str], thash_keys: List[str], imdb_keys: List[str]):
+async def remove_media(unique_id: str, thash_key: str, index: int, imdb_key: str):
     pipe = await redis_client.pipeline()
-    pipe.delete(*[unique_id_key for unique_id_key in unique_id_keys], *[thash_key for thash_key in thash_keys])
-    for unique_id_key,imdb_key in zip(unique_id_keys,imdb_keys):
-        pipe.srem(imdb_key, unique_id_key[10:0]) # Could optimize this whole thing to just do different srems for each imdb. But i can do that latter
+    pipe.delete(get_unique_key(unique_id))
+    pipe.hdel(thash_key, index)
+    pipe.srem(imdb_key, unique_id)
     await pipe.execute()
 
 @redischeck()
-async def remove_media_from_uniqueid(unique_id: str):
+async def remove_media_by_uniqueid(unique_id: str):
     """
     Removes a media summary from the Redis database by uniqueid.
     """
     
     MediaSummary = await get_media_from_uniqueid(unique_id)
 
-    unique_id_key = get_unique_key(unique_id)
-    thash_key = get_torrent_hash_key(MediaSummary["torrent_hash"], MediaSummary["torrent_file_index"])
+    thash_key = get_torrent_hash_key(MediaSummary["torrent_hash"])
     imdb_key = get_imdb_key(MediaSummary["imdb_id"])
 
-
-    await remove_media(unique_id_key, thash_key, imdb_key)
+    await remove_media(unique_id, thash_key, MediaSummary["torrent_file_index"], imdb_key)
 
 @redischeck()
-async def remove_media_from_torrent_hash(thash: str, index: int):
+async def remove_media_from_torrent_index(thash: str, index: int):
     """
     Removes a media summary from the Redis database by torrent hash and index.
     """
     
-    MediaSummary = await get_media_from_torrent_hash(thash, index)
+    MediaSummary = await get_media_from_torrent_index(thash, index)
 
-    unique_id_key = get_unique_key(MediaSummary["unique_id"])
-    thash_key = get_torrent_hash_key(thash, index)
+    thash_key = get_torrent_hash_key(thash)
     imdb_key = get_imdb_key(MediaSummary["imdb_id"])
 
-    await remove_media(unique_id_key, thash_key, imdb_key)
+    await remove_media(MediaSummary["unique_id"], thash_key, index, imdb_key)
 
 @redischeck()
 async def remove_medias_from_torrent_hash(thash: str):
     """
     Removes an entire torrent of media summaries from the Redis database by torrent hash.
     """
-    
-    thash_key = get_torrent_hash_key(thash)
-    
-    thash_keys = get_children_of_key(thash_key)
 
-    unique_ids = await redis_client.mget(*thash_keys)
-
-    unique_id_keys = [get_unique_key(unique_id) for unique_id in unique_ids]
+    unique_ids = await get_unique_ids_from_torrent_hash(thash)
 
     MediaSummaries = await get_medias_from_uniqueids(unique_ids)
 
-    imdb_keys = [get_imdb_key(MediaSummary["imdb_id"]) for MediaSummary in MediaSummaries]
+    imdb_keys_uniqueid = {}
 
-    await remove_medias(unique_id_keys, thash_keys, imdb_keys)
-    
-    await redis_client.delete(thash_key)
+    # Batch unique ids by imdb
+    for MediaSummary in MediaSummaries:
+        if not imdb_keys_uniqueid.get(MediaSummary["imdb_id"]):
+            imdb_keys_uniqueid.update({MediaSummary["imdb_id"]:[]})
+        imdb_keys_uniqueid[MediaSummary["imdb_id"]].append(MediaSummary["unique_id"])
+
+    # W speed up by batching srem calls by imdb instead of calling it for every unique id even if they had the same imdb
+
+    pipe = await redis_client.pipeline()
+    pipe.delete(*[get_unique_key(unique_id) for unique_id in unique_ids], get_torrent_hash_key(thash))
+    for imdb_key,unique_ids in enumerate(imdb_keys_uniqueid):
+        pipe.srem(get_imdb_key(imdb_key), *unique_ids)
+    await pipe.execute()
+
+@redischeck()
+async def remove_medias_from_imdb(imdb: str):
+    """
+    Removes all media summaries for a imdb from the Redis database.
+    """
+    pass
