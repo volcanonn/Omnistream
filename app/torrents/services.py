@@ -77,7 +77,7 @@ async def get_medias_from_uniqueids(unique_ids: List):
     return None
 
 @redischeck()
-async def get_media_from_torrent_index(thash: str, index: int):
+async def get_media_from_torrent_index(thash: str, index: str):
     """
     Fetches a single media by torrent hash and index.
     """ 
@@ -89,6 +89,8 @@ async def get_media_from_torrent_index(thash: str, index: int):
 
 # Need to add checks to all the redis_client gets
 # Also i think all torrent indexes have to be strings cause they do
+# Yea next thing is to do error handling for everything and returning errors instead of just 500
+# Then finaly do mediainfo json to proto and i probably should rename all that and give a name to my format. maybe AIOMetadata ACTAULLY THATS GOATED THAT COULD BE ANOTHER NAME
 
 @redischeck()
 async def get_medias_from_torrent_hash(thash: str):
@@ -183,35 +185,38 @@ async def create_media_summary_from_tracker(json_media):
     Creates a new media summary from tracker json in the Redis database.
     """
 
-    summary_proto = utils.parse_tracker_json_to_proto(json_media)
+    try:
+        summary_proto = utils.parse_tracker_json_to_proto(json_media)
 
-    unique_id = summary_proto.unique_id
-    imdb_id = summary_proto.imdb_id
-    torrent_hash = summary_proto.torrent_hash
-    torrent_file_index = summary_proto.torrent_file_index
+        unique_id = summary_proto.unique_id
+        imdb_id = summary_proto.imdb_id
+        torrent_hash = summary_proto.torrent_hash
+        torrent_file_index = summary_proto.torrent_file_index
 
-    serialized_data = summary_proto.SerializeToString()
+        serialized_data = summary_proto.SerializeToString()
 
-    unique_id_key = get_unique_key(unique_id)
-    imdb_key = get_imdb_key(imdb_id)
-    thash_key = get_torrent_hash_key(torrent_hash, torrent_file_index)
+        unique_id_key = get_unique_key(unique_id)
+        imdb_key = get_imdb_key(imdb_id)
+        thash_key = get_torrent_hash_key(torrent_hash, torrent_file_index)
 
-    #pipe = redis_client.pipeline()
-    pipe = redis_client # Dont need a pipeline for now
-    await pipe.set(unique_id_key, serialized_data)
-    await pipe.hset(thash_key, str(torrent_file_index), unique_id)#await pipe.set(thash_key, unique_id)
-    await pipe.sadd(imdb_key, unique_id) # might not be able to do always
-    #pipe.execute()
+        #pipe = redis_client.pipeline()
+        pipe = redis_client # Dont need a pipeline for now
+        await pipe.set(unique_id_key, serialized_data)
+        await pipe.hset(thash_key, str(torrent_file_index), unique_id)#await pipe.set(thash_key, unique_id)
+        await pipe.sadd(imdb_key, unique_id) # might not be able to do always
+        #pipe.execute()
 
-    response = models.MediaResponse(
-        status="success",
-        unique_id=unique_id,
-        imdb_id=imdb_id,
-        torrent_hash=torrent_hash,
-        index=torrent_file_index
-    )
+        response = models.MediaResponse(
+            status="success",
+            unique_id=unique_id,
+            imdb_id=imdb_id,
+            torrent_hash=torrent_hash,
+            index=torrent_file_index
+        )
 
-    return response
+        return response
+    except Exception as e:
+        pass
 
 @redischeck()
 async def remove_media(unique_id: str, thash_key: str, index: int, imdb_key: str):
