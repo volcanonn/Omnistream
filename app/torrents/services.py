@@ -160,7 +160,7 @@ async def create_media_summary_from_mediainfo(json_media):
     await pipe.sadd(imdb_key, unique_id) # might not be able to do always
     #pipe.execute()
 
-    response = models.MediaResponse(
+    response = models.CreateMediaResponse(
         status="success",
         unique_id=unique_id,
         imdb_id=imdb_id,
@@ -197,7 +197,7 @@ async def create_media_summary_from_tracker(json_media):
 
         unique_id_key = get_unique_key(unique_id)
         imdb_key = get_imdb_key(imdb_id)
-        thash_key = get_torrent_hash_key(torrent_hash, torrent_file_index)
+        thash_key = get_torrent_hash_key(torrent_hash)
 
         #pipe = redis_client.pipeline()
         pipe = redis_client # Dont need a pipeline for now
@@ -206,17 +206,24 @@ async def create_media_summary_from_tracker(json_media):
         await pipe.sadd(imdb_key, unique_id) # might not be able to do always
         #pipe.execute()
 
-        response = models.MediaResponse(
+        response = models.CreateMediaResponse(
             status="success",
             unique_id=unique_id,
             imdb_id=imdb_id,
             torrent_hash=torrent_hash,
             index=torrent_file_index
         )
-
-        return response
     except Exception as e:
-        pass
+        print(e)
+        response = models.CreateMediaResponse(
+            status="failed",
+            unique_id=unique_id,
+            imdb_id=imdb_id,
+            torrent_hash=torrent_hash,
+            index=torrent_file_index
+        )
+
+    return response
 
 @redischeck()
 async def remove_media(unique_id: str, thash_key: str, index: int, imdb_key: str):
