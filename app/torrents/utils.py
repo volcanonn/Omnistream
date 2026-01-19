@@ -20,12 +20,20 @@ def mediainfo_protobuf_to_dict(media_proto: MediaInfoSummary) -> MediaInfoSummar
 
 def parse_mediainfo_json_to_proto(media_json: dict) -> MediaInfoSummary:
     summary = MediaInfoSummary()
-    summary.mediainfo_version = media_json.creating_library.version
-    for track in media_json.media.tracks:
+    summary.mediainfo_version = media_json["creating_library"]["version"]
+    for track in media_json["media"]["tracks"]:
         match track.track_type:
             case "General":
                 summary.title = track.title
                 summary.unique_id = track.unique_id or "jiggle"
+            case "Video":
+                summary.width = track
+            case "Audio":
+                pass
+            case "Text":
+                pass
+            case _:
+                pass
     return summary
 
 def parse_hdr_features(hdr_string: str) -> str:
