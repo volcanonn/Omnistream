@@ -91,6 +91,7 @@ async def get_media_from_torrent_index(thash: str, index: str):
 # Also i think all torrent indexes have to be strings cause they do
 # Yea next thing is to do error handling for everything and returning errors instead of just 500
 # Then finaly do mediainfo json to proto and i probably should rename all that and give a name to my format. maybe AIOMetadata ACTAULLY THATS GOATED THAT COULD BE ANOTHER NAME
+# make everything use format and not codec id also fix all the old funcs in utils
 
 @redischeck()
 async def get_medias_from_torrent_hash(thash: str):

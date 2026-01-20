@@ -5,6 +5,7 @@ from app.core.database import redis_client
 from .models import *
 import uuid
 from functools import wraps # W Wraps?
+import os
 
 def mediainfo_protobuf_to_dict(media_proto: MediaInfoSummary) -> MediaInfoSummaryModel:
     data_dict = MessageToDict(media_proto,
@@ -18,72 +19,170 @@ def mediainfo_protobuf_to_dict(media_proto: MediaInfoSummary) -> MediaInfoSummar
         print(f"Validation Error: {e}")
         return {"errors": True}
 
-def parse_mediainfo_json_to_proto(media_json: dict) -> MediaInfoSummary:
-    summary = MediaInfoSummary()
-    summary.mediainfo_version = media_json["creating_library"]["version"]
-    for track in media_json["media"]["tracks"]:
-        match track.track_type:
-            case "General":
+def parse_mediainfo_json_to_proto(source: MediaInfoFile) -> MediaInfoSummary:
+    summary = MediaInfoSummary(
+        mediainfo_version=source.creating_library.version
+    )
+
+    for track in source.media.tracks:
+        
+        # --- GENERAL TRACK ---
+        if isinstance(track, GeneralTrack):
+            summary.unique_id = track.unique_id
+            summary.container = track.file_extension
+            summary.size = track.file_size
+            
+            if track.title:
                 summary.title = track.title
-                summary.unique_id = track.unique_id or "jiggle"
-            case "Video":
-                summary.width = track
-            case "Audio":
-                pass
-            case "Text":
-                pass
-            case _:
-                pass
+            elif source.media.ref:
+                summary.title = os.path.splitext(os.path.basename(source.media.ref))[0]
+
+        # --- VIDEO TRACK ---
+        elif isinstance(track, VideoTrack):
+            is_3d = False
+            if track.multiview_count and track.multiview_count != "1":
+                is_3d = True
+
+            vid_sum = VideoSummary(
+                codec=track.format,
+                bit_depth=track.bit_depth,
+                width=track.width,
+                height=track.height,
+                hdr=parse_hdr_features(track),
+                is_3d=is_3d,
+                source=track.source or track.title
+            )
+            summary.video_tracks.append(vid_sum)
+
+        # --- AUDIO TRACK ---
+        elif isinstance(track, AudioTrack):
+            is_commentary = False
+            is_descriptive = False
+            
+            combined_desc = f"{track.source or ''} {track.title or ''}".lower()
+            
+            if "commentary" in combined_desc:
+                is_commentary = True
+            if "descriptive" in combined_desc or "sdh" in combined_desc:
+                is_descriptive = True
+
+            aud_sum = AudioSummary(
+                language=track.language,
+                format_tag=track.format,
+                channels_tag=parse_channel_layout(track.channel_layout, track.channels),
+                is_commentary=is_commentary,
+                is_descriptive=is_descriptive,
+                source=track.source or track.title
+            )
+            summary.audio_tracks.append(aud_sum)
+
+        # --- SUBTITLE TRACK ---
+        elif isinstance(track, TextTrack):
+            is_sdh = False
+            combined_desc = f"{track.source or ''} {track.title or ''}".lower()
+            
+            if "sdh" in combined_desc or (track.language and "sdh" in track.language.lower()):
+                is_sdh = True
+
+            sub_sum = SubtitleSummary(
+                language=track.language,
+                format=track.format,
+                is_sdh=is_sdh,
+                source=track.source or track.title
+            )
+            summary.subtitle_tracks.append(sub_sum)
+
+
     return summary
 
-def parse_hdr_features(hdr_string: str) -> str:
+def parse_channel_layout(layout: str, channel_count: int | str) -> str:
     """
-    Parses the complex HDR format string to extract a clean list of features.
-    Handles Dolby Vision profile rules for HDR10 compatibility.
+    Calculates audio configuration from ChannelLayout string.
+    Supports Standard (X.Y) and Object/Height (X.Y.Z) formats.
+    
+    Examples:
+    'L R C LFE Ls Rs' -> "5.1"
+    'L R C LFE Ls Rs Tfl Tfr' -> "5.1.2"
     """
-    if not isinstance(hdr_string, str) or not hdr_string:
-        return "SDR"
+    if not layout:
+        try:
+            c = int(channel_count)
+            if c == 6: return "5.1"
+            if c == 8: return "7.1"
+            return f"{c}.0"
+        except (ValueError, TypeError):
+            return str(channel_count)
 
+    speakers = layout.replace("  ", " ").strip().split(" ")
+    
+    lfe_count = 0
+    height_count = 0
+    bed_count = 0
+
+    height_markers = ["TFL", "TFR", "TBL", "TBR", "TSL", "TSR", "TFC", "TBC", "VHL", "VHR", "TOP"]
+
+    for s in speakers:
+        s_upper = s.upper()
+        
+        if "LFE" in s_upper:
+            lfe_count += 1
+        elif any(s_upper.startswith(h) for h in height_markers) or "HEIGHT" in s_upper:
+            height_count += 1
+        else:
+            bed_count += 1
+    
+    if height_count > 0:
+        return f"{bed_count}.{lfe_count}.{height_count}"
+    else:
+        return f"{bed_count}.{lfe_count}"
+
+def parse_hdr_features(track: VideoTrack) -> str:
+    """
+    Analyzes a VideoTrack to determine HDR capabilities.
+    Checks Format, Compatibility, and Transfer Characteristics.
+    """
     features = set()
+    
+    hdr_format = (track.hdr_format or "").strip()
+    hdr_compat = (track.hdr_format_compatibility or "").strip()
+    transfer = (track.transfer_characteristics or "").strip()
+    
+    full_string = f"{hdr_format} {hdr_compat}"
 
-    # Check for Dolby Vision
-    is_dv = "Dolby Vision" in hdr_string
+    # --- DOLBY VISION DETECTION ---
+    is_dv = "Dolby Vision" in hdr_format
     if is_dv:
         features.add("DV")
 
-    # Check for HDR10+
-    if "HDR10+" in hdr_string:
+    # --- HDR10+ DETECTION ---
+    if "HDR10+" in full_string or "SMPTE ST 2094" in full_string:
         features.add("HDR10+")
 
-    # Determine HDR10 compatibility
-    is_hdr10_compatible = "HDR10 compatible" in hdr_string
-
-    # Profiles 7 and 8 are HDR10 compatible. Profile 5 is not.
-    if is_dv:
-        profile_match = re.search(r'Profile (\d+)|dvhe\.(\d+)', hdr_string)
-        if profile_match:
-            # group(1) is for "Profile X", group(2) is for "dvhe.XX"
-            profile_num_str = profile_match.group(1) or profile_match.group(2)
-            profile_num = int(profile_num_str)
-            
-            # Profiles 7 and 8 have an HDR10 base layer.
-            if profile_num in [7, 8]:
-                is_hdr10_compatible = True
-        # If we can't determine profile but the string says compatible, trust it.
-        elif "Blu-ray compatible" in hdr_string:
-             is_hdr10_compatible = True
-
-    if is_hdr10_compatible:
+    # --- HDR10 DETECTION ---
+    # Check 1
+    if "HDR10" in hdr_compat or "SMPTE ST 2086" in hdr_format:
         features.add("HDR10")
-        
-    # Fallback for plain HDR10 (if not already found via DV compatibility)
-    if "SMPTE ST 2086" in hdr_string and "HDR10" not in features:
-        features.add("HDR10")
+    
+    # Check 2
+    elif is_dv:
+        if "HDR10" in full_string or "Blu-ray" in full_string:
+            features.add("HDR10")
+        else:
+            profile_match = re.search(r'(?:Profile\s?|dvhe\.)0?([78])', full_string)
+            if profile_match:
+                features.add("HDR10")
+
+    # Check 3
+    if "HDR10" not in features and ("PQ" in transfer or "SMPTE ST 2084" in transfer):
+        if not re.search(r'(?:Profile\s?|dvhe\.)0?5', full_string):
+            features.add("HDR10")
+
+    if "HLG" in transfer or "ARIB STD-B67" in transfer:
+        features.add("HLG")
 
     if not features:
         return "SDR"
 
-    # Sort for consistent ordering, e.g., "DV, HDR10, HDR10+"
     return ", ".join(sorted(list(features)))
 
 def parse_tracker_json_to_proto(tracker_json: Unit3dTorrent) -> MediaInfoSummary:
@@ -193,7 +292,7 @@ def mediainfo_dict_to_proto(mediainfo: dict) -> MediaInfoSummary:
         elif "TrueHD" in commercial_name:
             track_proto.format_tag = "TrueHD"
         elif "Dolby Digital" in commercial_name:
-            track_proto.format_tag = "DD" # Need to add DD+ and should this use Format or Codec ID?
+            track_proto.format_tag = "DD" # Need to add DD+ and should this use Format or Codec ID? ALWAYS USE FORMAT FIX THIS BLUD
         else:
             track_proto.format_tag = track_dict.get("Format", "")
 
@@ -216,13 +315,11 @@ def mediainfo_dict_to_proto(mediainfo: dict) -> MediaInfoSummary:
         if "descriptive" in title:
             track_proto.is_descriptive = True
 
-    # Populate Subtitle Tracks
     for track_dict in mediainfo.get("Text", []):
         track_proto = summary.subtitle_tracks.add()
         track_proto.language = track_dict.get("Language", "")
         track_proto.source = track_dict.get("Source", "")
         
-        # Get the format string from the JSON
         format_str = track_dict.get("Format", "")
 
         if format_str == "PGS":
