@@ -1,5 +1,5 @@
 import re
-from app.core.proto.media_info_pb2 import MediaInfoSummary # type: ignore
+from app.core.proto.media_info_pb2 import OmnistreamProtoSummary # type: ignore
 from google.protobuf.json_format import MessageToDict
 from app.core.database import redis_client
 from .models import *
@@ -7,27 +7,27 @@ import uuid
 from functools import wraps # W Wraps?
 import os
 
-def mediainfo_protobuf_to_dict(media_proto: MediaInfoSummary) -> MediaInfoSummaryModel:
+def omnistream_proto_summary_to_dict(media_proto: OmnistreamProtoSummary) -> OmnistreamMetadata:
     data_dict = MessageToDict(media_proto,
                   preserving_proto_field_name=True,
                   use_integers_for_enums=False
     )
     try:
-        mediainfosummaryoutput = MediaInfoSummaryModel.model_validate(data_dict)
-        return mediainfosummaryoutput
+        omnistream_output = OmnistreamMetadata.model_validate(data_dict)
+        return omnistream_output
     except ValueError as e:
         print(f"Validation Error: {e}")
         return {"errors": True}
 
-def parse_mediainfo_json_to_proto(source: MediaInfoFile) -> MediaInfoSummary:
-    summary = MediaInfoSummary(
+def parse_mediainfo_export_to_proto(source: dict) -> OmnistreamProtoSummary:
+    summary = OmnistreamProtoSummary(
         mediainfo_version=source.creating_library.version
     )
 
     for track in source.media.tracks:
         
         # --- GENERAL TRACK ---
-        if isinstance(track, GeneralTrack):
+        if isinstance(track, GeneralTrackExport):
             summary.unique_id = track.unique_id
             summary.container = track.file_extension
             summary.size = track.file_size
@@ -38,12 +38,12 @@ def parse_mediainfo_json_to_proto(source: MediaInfoFile) -> MediaInfoSummary:
                 summary.title = os.path.splitext(os.path.basename(source.media.ref))[0]
 
         # --- VIDEO TRACK ---
-        elif isinstance(track, VideoTrack):
+        elif isinstance(track, VideoTrackExport):
             is_3d = False
             if track.multiview_count and track.multiview_count != "1":
                 is_3d = True
 
-            vid_sum = VideoSummary(
+            vid_sum = OmnistreamVideo(
                 codec=track.format,
                 bit_depth=track.bit_depth,
                 width=track.width,
@@ -55,7 +55,7 @@ def parse_mediainfo_json_to_proto(source: MediaInfoFile) -> MediaInfoSummary:
             summary.video_tracks.append(vid_sum)
 
         # --- AUDIO TRACK ---
-        elif isinstance(track, AudioTrack):
+        elif isinstance(track, AudioTrackExport):
             is_commentary = False
             is_descriptive = False
             
@@ -66,7 +66,7 @@ def parse_mediainfo_json_to_proto(source: MediaInfoFile) -> MediaInfoSummary:
             if "descriptive" in combined_desc or "sdh" in combined_desc:
                 is_descriptive = True
 
-            aud_sum = AudioSummary(
+            aud_sum = OmnistreamAudio(
                 language=track.language,
                 format_tag=track.format,
                 channels_tag=parse_channel_layout(track.channel_layout, track.channels),
@@ -77,14 +77,14 @@ def parse_mediainfo_json_to_proto(source: MediaInfoFile) -> MediaInfoSummary:
             summary.audio_tracks.append(aud_sum)
 
         # --- SUBTITLE TRACK ---
-        elif isinstance(track, TextTrack):
+        elif isinstance(track, TextTrackExport):
             is_sdh = False
             combined_desc = f"{track.source or ''} {track.title or ''}".lower()
             
             if "sdh" in combined_desc or (track.language and "sdh" in track.language.lower()):
                 is_sdh = True
 
-            sub_sum = SubtitleSummary(
+            sub_sum = OmnistreamSubtitle(
                 language=track.language,
                 format=track.format,
                 is_sdh=is_sdh,
@@ -136,7 +136,7 @@ def parse_channel_layout(layout: str, channel_count: int | str) -> str:
     else:
         return f"{bed_count}.{lfe_count}"
 
-def parse_hdr_features(track: VideoTrack) -> str:
+def parse_hdr_features(track: VideoTrackExport) -> str:
     """
     Analyzes a VideoTrack to determine HDR capabilities.
     Checks Format, Compatibility, and Transfer Characteristics.
@@ -185,14 +185,14 @@ def parse_hdr_features(track: VideoTrack) -> str:
 
     return ", ".join(sorted(list(features)))
 
-def parse_tracker_json_to_proto(tracker_json: Unit3dTorrent) -> MediaInfoSummary:
+def parse_tracker_json_to_proto(tracker_json: Unit3dTorrent) -> OmnistreamProtoSummary:
     mediainfo_dict = parse_mediainfo_text_to_dict(tracker_json.attributes.media_info)
     if mediainfo_dict.get("errors"):
         return {"errors":True}
     #print(mediainfo_dict)
     tracker_proto = tracker_dict_to_proto(tracker_json, mediainfo_dict["General"]["Complete name"])
     mediainfo_proto = mediainfo_dict_to_proto(mediainfo_dict)
-    finalproto = MediaInfoSummary()
+    finalproto = OmnistreamProtoSummary()
     finalproto.MergeFrom(tracker_proto)
     finalproto.MergeFrom(mediainfo_proto)
     return finalproto
@@ -247,8 +247,8 @@ def parse_mediainfo_text_to_dict(media_text: str) -> dict:
     except Exception as e:
         return {"errors":True}
 
-def mediainfo_dict_to_proto(mediainfo: dict) -> MediaInfoSummary:
-    summary = MediaInfoSummary()
+def mediainfo_dict_to_proto(mediainfo: dict) -> OmnistreamProtoSummary:
+    summary = OmnistreamProtoSummary()
 
     general = mediainfo.get("General", {})
 
@@ -339,8 +339,8 @@ def mediainfo_dict_to_proto(mediainfo: dict) -> MediaInfoSummary:
     return summary
 
 
-def tracker_dict_to_proto(tracker_dict: Unit3dTorrent, filename = None) -> MediaInfoSummary:
-    summary = MediaInfoSummary()
+def tracker_dict_to_proto(tracker_dict: Unit3dTorrent, filename = None) -> OmnistreamProtoSummary:
+    summary = OmnistreamProtoSummary()
 
     data = tracker_dict.attributes
 

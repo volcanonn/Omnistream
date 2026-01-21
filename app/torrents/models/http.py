@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any, List
 from enum import Enum
 from pydantic import BaseModel, Field, model_validator, ConfigDict
-from .mediainfosummary import MediaInfoSummary
+from .OmnistreamMetadata import OmnistreamMetadata
 
 class JobStatus(str, Enum):
     SUCCESS = "success"
@@ -33,7 +33,7 @@ class MediaDataResponse(BaseModel):
 
     status: JobStatus = Field(..., description="API Status")
     
-    data: Optional[List[MediaInfoSummary]] = Field(
+    data: Optional[List[OmnistreamMetadata]] = Field(
         None, 
         description="A list of media summaries. Can be multiple items."
     )

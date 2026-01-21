@@ -31,7 +31,7 @@ message SubtitleSummary {
 }
 
 // Contains all the essential metadata parsed from the media file and its name.
-message MediaInfoSummary {
+message OmnistreamProtoSummary {
   // --- MediaInfo Info
   string mediainfo_version = 23;      // Version of MediaInfo Used
 

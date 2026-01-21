@@ -1,7 +1,7 @@
 from typing import List, Optional, TypedDict
 from pydantic import BaseModel, Field
 
-class VideoSummary(BaseModel):
+class OmnistreamVideo(BaseModel):
     """A compact summary of a single VIDEO track's key features."""
     codec: str = Field("", description='e.g., "HEVC", "AVC"')
     bit_depth: int = Field(0, description='e.g., 10, 8')
@@ -12,7 +12,7 @@ class VideoSummary(BaseModel):
     has_hardcoded_subtitles: Optional[bool] = Field(None, description='Does this video track contain hardcoded subtitles?')
     source: Optional[str] = Field(None, description='e.g., "Warner Bros. USA UHD Blu-ray (2025)"')
 
-class AudioSummary(BaseModel):
+class OmnistreamAudio(BaseModel):
     """A compact summary of a single AUDIO track's key features."""
     language: Optional[str] = Field(None, description='e.g., "English", "Japanese"')
     format_tag: str = Field("", description='e.g., "Atmos", "TrueHD", "DTS-HD MA", "FLAC"')
@@ -21,14 +21,14 @@ class AudioSummary(BaseModel):
     is_descriptive: Optional[bool] = Field(None, description='Is this a descriptive audio track?')
     source: Optional[str] = Field(None, description='e.g., "Warner Bros. USA UHD Blu-ray (2025)"')
 
-class SubtitleSummary(BaseModel):
+class OmnistreamSubtitle(BaseModel):
     """A compact summary of a single SUBTITLE track's key features."""
     language: Optional[str] = Field(None, description='e.g., "English", "French"')
     format: Optional[str] = Field(None, description='e.g., "PGS", "SRT"')
     is_sdh: Optional[bool] = Field(None, description='Subtitles for the Deaf and Hard of Hearing?')
     source: Optional[str] = Field(None, description='e.g., "iTunes WEB-DL"')
 
-class MediaInfoSummary(BaseModel):
+class OmnistreamMetadata(BaseModel):
     """The main "Hot" data object to be stored in Redis."""
     # --- Parser Info ---
     # Need to update media info.proto add version of mediainfo and version of omnistream
@@ -63,6 +63,6 @@ class MediaInfoSummary(BaseModel):
 
     # --- Track Summaries (These are dynamic lists) ---
     # Use default_factory for mutable defaults like lists to avoid bugs
-    video_tracks: List[VideoSummary] = Field(default_factory=list, description="A list of video track summaries")
-    audio_tracks: List[AudioSummary] = Field(default_factory=list, description="A list of audio track summaries")
-    subtitle_tracks: List[SubtitleSummary] = Field(default_factory=list, description="A list of subtitle track summaries")
+    video_tracks: List[OmnistreamVideo] = Field(default_factory=list, description="A list of video track summaries")
+    audio_tracks: List[OmnistreamAudio] = Field(default_factory=list, description="A list of audio track summaries")
+    subtitle_tracks: List[OmnistreamSubtitle] = Field(default_factory=list, description="A list of subtitle track summaries")

@@ -5,7 +5,7 @@ from .services import *
 router = APIRouter(prefix="/torrents")
 
 @router.post("/upload", response_model=CreateMediaResponse)
-async def create_mediainfo_json(json_media: MediaInfoFile):
+async def create_mediainfo_json(json_media: MediaInfoExport):
     """
     Endpoint to create a new media.
     """

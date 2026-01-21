@@ -1,7 +1,7 @@
 from . import models, utils
 from app.core.database import redis_client
 from.utils import redischeck
-from app.core.proto.media_info_pb2 import MediaInfoSummary # type: ignore
+from app.core.proto.media_info_pb2 import OmnistreamProtoSummary # type: ignore
 from typing import List
 
 def get_unique_key(unique_id):
@@ -45,9 +45,9 @@ async def get_media_from_uniqueid(unique_id):
     media_info = await redis_client.get(unique_id_key)
     
     if media_info:
-        MediaInfoSummaryContext = MediaInfoSummary()
-        MediaInfoSummaryContext.ParseFromString(media_info)
-        return utils.mediainfo_protobuf_to_dict(MediaInfoSummaryContext)
+        OmnistreamProtoSummaryContext = OmnistreamProtoSummary()
+        OmnistreamProtoSummaryContext.ParseFromString(media_info)
+        return utils.omnistream_proto_summary_to_dict(OmnistreamProtoSummaryContext)
     return None
 
 @redischeck()
@@ -62,11 +62,11 @@ async def get_medias_from_uniqueids(unique_ids: List):
     
     if len(media_infos) > 0:
         output = []
-        MediaInfoSummaryContext = MediaInfoSummary()
+        OmnistreamProtoSummaryContext = OmnistreamProtoSummary()
         for media_info in media_infos:
-            MediaInfoSummaryContext.Clear()
-            MediaInfoSummaryContext.ParseFromString(media_info)
-            output.append(utils.mediainfo_protobuf_to_dict(MediaInfoSummaryContext))
+            OmnistreamProtoSummaryContext.Clear()
+            OmnistreamProtoSummaryContext.ParseFromString(media_info)
+            output.append(utils.omnistream_proto_summary_to_dict(OmnistreamProtoSummaryContext))
         """output = {}
         MediaInfoSummaryContext = MediaInfoSummary()
         for media_info,unique_id in zip(media_infos,unique_ids):
@@ -90,8 +90,9 @@ async def get_media_from_torrent_index(thash: str, index: str):
 # Need to add checks to all the redis_client gets
 # Also i think all torrent indexes have to be strings cause they do
 # Yea next thing is to do error handling for everything and returning errors instead of just 500
-# Then finaly do mediainfo json to proto and i probably should rename all that and give a name to my format. maybe AIOMetadata ACTAULLY THATS GOATED THAT COULD BE ANOTHER NAME
 # make everything use format and not codec id also fix all the old funcs in utils
+# I need to go through every thing and see if its supposed to be mediainfo text or mediainfo json or tracker and add models and do this all correctly cause now its really fucked up for everything
+# add debug logger at some point
 
 @redischeck()
 async def get_medias_from_torrent_hash(thash: str):
@@ -128,7 +129,6 @@ async def process_lookup(params: models.MediaRequestParams) -> models.MediaDataR
 
     elif params.torrent_hash:
         result = await get_medias_from_torrent_hash(params.torrent_hash)
-        print(result)
 
     return models.MediaDataResponse(
         status="success",
@@ -141,7 +141,7 @@ async def create_media_summary_from_mediainfo(json_media):
     Creates a new media summary from mediainfo json in the Redis database.
     """
 
-    summary_proto = utils.parse_mediainfo_json_to_proto(json_media)
+    summary_proto = utils.parse_mediainfo_export_to_proto(json_media)
 
     unique_id = summary_proto.unique_id
     imdb_id = summary_proto.imdb_id

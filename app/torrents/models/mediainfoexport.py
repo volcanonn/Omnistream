@@ -9,7 +9,7 @@ class CreatingLibrary(BaseModel):
     version: str = Field(description="e.g. 25.07")
     url: str = Field(description="e.g. https://mediaarea.net/MediaInfo")
 
-class GeneralTrack(BaseModel):
+class GeneralTrackExport(BaseModel):
     """
     Represents the container information.
     """
@@ -40,7 +40,7 @@ class GeneralTrack(BaseModel):
     encoded_application: Optional[str] = Field(None, alias="Encoded_Application")
     encoded_library: Optional[str] = Field(None, alias="Encoded_Library")
 
-class VideoTrack(BaseModel):
+class VideoTrackExport(BaseModel):
     """
     Represents a video stream.
     """
@@ -100,7 +100,7 @@ class VideoTrack(BaseModel):
     # 3D (Optional)
     multiview_count: Optional[str] = Field(None, alias="MultiView_Count")
 
-class AudioTrack(BaseModel):
+class AudioTrackExport(BaseModel):
     """
     Represents an audio stream.
     """
@@ -138,7 +138,7 @@ class AudioTrack(BaseModel):
     default: Optional[str] = Field(None, alias="Default")
     forced: Optional[str] = Field(None, alias="Forced")
 
-class TextTrack(BaseModel):
+class TextTrackExport(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     track_type: Literal["Text"] = Field(alias="@type")
@@ -155,7 +155,7 @@ class TextTrack(BaseModel):
     default: Optional[str] = Field(None, alias="Default")
     forced: Optional[str] = Field(None, alias="Forced")
 
-class ImageTrack(BaseModel):
+class ImageTrackExport(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     track_type: Literal["Image"] = Field(alias="@type")
     
@@ -166,11 +166,11 @@ class ImageTrack(BaseModel):
     chroma_subsampling: str = Field(alias="ChromaSubsampling")
     compression_mode: str = Field(alias="Compression_Mode")
 
-class MenuTrack(BaseModel):
+class MenuTrackExport(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     track_type: Literal["Menu"] = Field(alias="@type")
 
-class OtherTrack(BaseModel):
+class OtherTrackExport(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     track_type: str = Field(alias="@type")
 
@@ -178,9 +178,9 @@ class MediaObjectRaw(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     
     ref: Optional[str] = Field(None, alias="@ref")
-    tracks: List[Union[GeneralTrack, VideoTrack, AudioTrack, TextTrack, ImageTrack, MenuTrack, OtherTrack]] = Field(alias="track")
+    tracks: List[Union[GeneralTrackExport, VideoTrackExport, AudioTrackExport, TextTrackExport, ImageTrackExport, MenuTrackExport, OtherTrackExport]] = Field(alias="track")
 
-class MediaInfoFile(BaseModel):
+class MediaInfoExport(BaseModel):
     """Root model for mediainfo.txt JSON parsing."""
     model_config = ConfigDict(populate_by_name=True)
     
