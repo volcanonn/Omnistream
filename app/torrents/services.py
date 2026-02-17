@@ -87,8 +87,6 @@ async def get_media_from_torrent_index(thash: str, index: str):
     
     return await get_media_from_uniqueid(unique_id)
 
-# Need to add checks to all the redis_client gets
-# Also i think all torrent indexes have to be strings cause they do
 # Yea next thing is to do error handling for everything and returning errors instead of just 500
 # make everything use format and not codec id also fix all the old funcs in utils
 # I need to go through every thing and see if its supposed to be mediainfo text or mediainfo json or tracker and add models and do this all correctly cause now its really fucked up for everything
