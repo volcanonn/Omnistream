@@ -1,22 +1,30 @@
-from . import models, utils
-from app.core.database import redis_client
-from.utils import redischeck
-from app.core.proto.media_info_pb2 import OmnistreamProtoSummary # type: ignore
 from typing import List
+
+from app.core.database import redis_client
+from app.core.proto.media_info_pb2 import OmnistreamProtoSummary  # type: ignore
+
+from . import models, utils
+from .utils import redischeck
+
 
 def get_unique_key(unique_id):
     if type(unique_id) == bytes:
-        unique_id = unique_id.decode('utf-8')
+        unique_id = unique_id.decode("utf-8")
     return f"mediafile:{unique_id}"
+
 
 def get_imdb_key(imdb_id: str):
     return f"imdb:{imdb_id}"
 
-def get_torrent_hash_key(hash_id: str): #, index: int = None
-    return f"thash:{hash_id}" #{':'+str(index) if index else ''}
+
+def get_torrent_hash_key(hash_id: str):  # , index: int = None
+    return f"thash:{hash_id}"  # {':'+str(index) if index else ''}
+
 
 @redischeck()
-async def get_children_of_key(key: str): # NEVER USE THIS SHIT FUNCTION AGAIN IM RETARDED
+async def get_children_of_key(
+    key: str,
+):  # NEVER USE THIS SHIT FUNCTION AGAIN IM RETARDED
     """
     DONT USE TS.
     """
@@ -29,11 +37,13 @@ async def get_children_of_key(key: str): # NEVER USE THIS SHIT FUNCTION AGAIN IM
             break
     return keys
 
+
 @redischeck()
 async def get_unique_ids_from_torrent_hash(thash: str):
     thash_key = get_torrent_hash_key(thash)
     thash_map = await redis_client.hgetall(thash_key)
     return list(thash_map.values())
+
 
 @redischeck()
 async def get_media_from_uniqueid(unique_id):
@@ -43,12 +53,13 @@ async def get_media_from_uniqueid(unique_id):
 
     unique_id_key = get_unique_key(unique_id)
     media_info = await redis_client.get(unique_id_key)
-    
+
     if media_info:
         OmnistreamProtoSummaryContext = OmnistreamProtoSummary()
         OmnistreamProtoSummaryContext.ParseFromString(media_info)
         return utils.omnistream_proto_summary_to_dict(OmnistreamProtoSummaryContext)
     return None
+
 
 @redischeck()
 async def get_medias_from_uniqueids(unique_ids: List):
@@ -59,14 +70,16 @@ async def get_medias_from_uniqueids(unique_ids: List):
     unique_id_keys = [get_unique_key(unique_id) for unique_id in unique_ids]
 
     media_infos = await redis_client.mget(unique_id_keys)
-    
+
     if len(media_infos) > 0:
         output = []
         OmnistreamProtoSummaryContext = OmnistreamProtoSummary()
         for media_info in media_infos:
             OmnistreamProtoSummaryContext.Clear()
             OmnistreamProtoSummaryContext.ParseFromString(media_info)
-            output.append(utils.omnistream_proto_summary_to_dict(OmnistreamProtoSummaryContext))
+            output.append(
+                utils.omnistream_proto_summary_to_dict(OmnistreamProtoSummaryContext)
+            )
         """output = {}
         MediaInfoSummaryContext = MediaInfoSummary()
         for media_info,unique_id in zip(media_infos,unique_ids):
@@ -76,21 +89,24 @@ async def get_medias_from_uniqueids(unique_ids: List):
         return output
     return None
 
+
 @redischeck()
 async def get_media_from_torrent_index(thash: str, index: str):
     """
     Fetches a single media by torrent hash and index.
-    """ 
+    """
 
     thash_key = get_torrent_hash_key(thash)
     unique_id = await redis_client.hget(thash_key, index)
-    
+
     return await get_media_from_uniqueid(unique_id)
+
 
 # Yea next thing is to do error handling for everything and returning errors instead of just 500
 # make everything use format and not codec id also fix all the old funcs in utils
 # I need to go through every thing and see if its supposed to be mediainfo text or mediainfo json or tracker and add models and do this all correctly cause now its really fucked up for everything
 # add debug logger at some point
+
 
 @redischeck()
 async def get_medias_from_torrent_hash(thash: str):
@@ -100,6 +116,7 @@ async def get_medias_from_torrent_hash(thash: str):
 
     unique_ids = await get_unique_ids_from_torrent_hash(thash)
     return await get_medias_from_uniqueids(unique_ids)
+
 
 @redischeck()
 async def get_medias_from_imdb(imdb: str):
@@ -112,26 +129,25 @@ async def get_medias_from_imdb(imdb: str):
 
     if not unique_ids:
         return []
-    
+
     return await get_medias_from_uniqueids(unique_ids)
+
 
 async def process_lookup(params: models.MediaRequestParams) -> models.MediaDataResponse:
     if params.unique_id:
         result = [await get_media_from_uniqueid(params.unique_id)]
-        
+
     elif params.imdb_id:
         result = await get_medias_from_imdb(params.imdb_id)
-    
+
     elif params.index:
         result = [await get_media_from_torrent_index(params.torrent_hash, params.index)]
 
     elif params.torrent_hash:
         result = await get_medias_from_torrent_hash(params.torrent_hash)
 
-    return models.MediaDataResponse(
-        status="success",
-        data=result
-    )
+    return models.MediaDataResponse(status="success", data=result)
+
 
 @redischeck()
 async def create_media_summary_from_mediainfo(json_media):
@@ -152,22 +168,25 @@ async def create_media_summary_from_mediainfo(json_media):
     imdb_key = get_imdb_key(imdb_id)
     thash_key = get_torrent_hash_key(torrent_hash)
 
-    #pipe = redis_client.pipeline()
-    pipe = redis_client # Dont need a pipeline for now
+    # pipe = redis_client.pipeline()
+    pipe = redis_client  # Dont need a pipeline for now
     await pipe.set(unique_id_key, serialized_data)
-    await pipe.hset(thash_key, str(torrent_file_index), unique_id)#await pipe.set(thash_key, unique_id)
-    await pipe.sadd(imdb_key, unique_id) # might not be able to do always
-    #pipe.execute()
+    await pipe.hset(
+        thash_key, str(torrent_file_index), unique_id
+    )  # await pipe.set(thash_key, unique_id)
+    await pipe.sadd(imdb_key, unique_id)  # might not be able to do always
+    # pipe.execute()
 
     response = models.CreateMediaResponse(
         status="success",
         unique_id=unique_id,
         imdb_id=imdb_id,
         torrent_hash=torrent_hash,
-        index=torrent_file_index
+        index=torrent_file_index,
     )
 
     return response
+
 
 # These two are the same thing just with different functions at the top
 # Can they be combined?
@@ -198,19 +217,21 @@ async def create_media_summary_from_tracker(json_media):
         imdb_key = get_imdb_key(imdb_id)
         thash_key = get_torrent_hash_key(torrent_hash)
 
-        #pipe = redis_client.pipeline()
-        pipe = redis_client # Dont need a pipeline for now
+        # pipe = redis_client.pipeline()
+        pipe = redis_client  # Dont need a pipeline for now
         await pipe.set(unique_id_key, serialized_data)
-        await pipe.hset(thash_key, str(torrent_file_index), unique_id)#await pipe.set(thash_key, unique_id)
-        await pipe.sadd(imdb_key, unique_id) # might not be able to do always
-        #pipe.execute()
+        await pipe.hset(
+            thash_key, str(torrent_file_index), unique_id
+        )  # await pipe.set(thash_key, unique_id)
+        await pipe.sadd(imdb_key, unique_id)  # might not be able to do always
+        # pipe.execute()
 
         response = models.CreateMediaResponse(
             status="success",
             unique_id=unique_id,
             imdb_id=imdb_id,
             torrent_hash=torrent_hash,
-            index=torrent_file_index
+            index=torrent_file_index,
         )
     except Exception as e:
         print(e)
@@ -219,10 +240,11 @@ async def create_media_summary_from_tracker(json_media):
             unique_id=unique_id,
             imdb_id=imdb_id,
             torrent_hash=torrent_hash,
-            index=torrent_file_index
+            index=torrent_file_index,
         )
 
     return response
+
 
 @redischeck()
 async def remove_media(unique_id: str, thash_key: str, index: int, imdb_key: str):
@@ -232,31 +254,36 @@ async def remove_media(unique_id: str, thash_key: str, index: int, imdb_key: str
     pipe.srem(imdb_key, unique_id)
     await pipe.execute()
 
+
 @redischeck()
 async def remove_media_by_uniqueid(unique_id: str):
     """
     Removes a media summary from the Redis database by uniqueid.
     """
-    
+
     MediaSummary = await get_media_from_uniqueid(unique_id)
 
     thash_key = get_torrent_hash_key(MediaSummary["torrent_hash"])
     imdb_key = get_imdb_key(MediaSummary["imdb_id"])
 
-    await remove_media(unique_id, thash_key, MediaSummary["torrent_file_index"], imdb_key)
+    await remove_media(
+        unique_id, thash_key, MediaSummary["torrent_file_index"], imdb_key
+    )
+
 
 @redischeck()
 async def remove_media_from_torrent_index(thash: str, index: int):
     """
     Removes a media summary from the Redis database by torrent hash and index.
     """
-    
+
     MediaSummary = await get_media_from_torrent_index(thash, index)
 
     thash_key = get_torrent_hash_key(thash)
     imdb_key = get_imdb_key(MediaSummary["imdb_id"])
 
     await remove_media(MediaSummary["unique_id"], thash_key, index, imdb_key)
+
 
 @redischeck()
 async def remove_medias_from_torrent_hash(thash: str):
@@ -273,16 +300,20 @@ async def remove_medias_from_torrent_hash(thash: str):
     # Batch unique ids by imdb
     for MediaSummary in MediaSummaries:
         if not imdb_keys_uniqueid.get(MediaSummary["imdb_id"]):
-            imdb_keys_uniqueid.update({MediaSummary["imdb_id"]:[]})
+            imdb_keys_uniqueid.update({MediaSummary["imdb_id"]: []})
         imdb_keys_uniqueid[MediaSummary["imdb_id"]].append(MediaSummary["unique_id"])
 
     # W speed up by batching srem calls by imdb instead of calling it for every unique id even if they had the same imdb
 
     pipe = await redis_client.pipeline()
-    pipe.delete(*[get_unique_key(unique_id) for unique_id in unique_ids], get_torrent_hash_key(thash))
-    for imdb_key,unique_ids in enumerate(imdb_keys_uniqueid):
+    pipe.delete(
+        *[get_unique_key(unique_id) for unique_id in unique_ids],
+        get_torrent_hash_key(thash),
+    )
+    for imdb_key, unique_ids in enumerate(imdb_keys_uniqueid):
         pipe.srem(get_imdb_key(imdb_key), *unique_ids)
     await pipe.execute()
+
 
 @redischeck()
 async def remove_medias_from_imdb(imdb: str):
